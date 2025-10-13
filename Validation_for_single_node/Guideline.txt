@@ -1,0 +1,247 @@
+Awesome brief. I took what you pasted and turned it into a **hand-offable, literature-anchored validation guide** that another agent (or you) can run end-to-end to (1) build the Wendling–Chauvel NMM in Python and (2) verify it rigorously against the papers. It’s organized for automation: each step has inputs, code tasks, plots to generate, and acceptance criteria.
+
+---
+
+# Wendling–Chauvel Neural Mass Model (NMM) — Replication & Validation Guide (for LLM agents)
+
+## Scope & papers to ground against
+
+Use these as the *source of truth*:
+
+* **Wendling et al., EJN 2002** (“Epileptic fast activity…”) — defines the 10-ODE model, standard parameters (A, B, G; a, b, g; C1…C7; sigmoid), output signal, and **six activity types** + **activity maps** in the (B,G) plane.
+* **Köksal Ersöz et al., PLoS Comp Biol 2020** — slow–fast analysis of the same NMM, explicit timescales (τa, τb, τg), sigmoid used in that paper, and **bifurcation structure** (Hopf points, folds) for pre-ictal bursting and LVFO (fast onset).
+
+> Notes on small differences you must respect during validation:
+>
+> * 2002 paper uses the classic Jansen–Rit sigmoid params (e0, v0, r).
+> * 2020 paper uses (S(v)=\frac{5}{1+\exp(0.56,(6-v))}) and explicit time constants (\tau_a=0.01) s, (\tau_b=0.05) s, (\tau_g=0.003) s.
+>   You should validate **both** configurations (to prove your implementation is robust to the two most-used parameterizations of this model family).
+
+---
+
+## Model you must implement (2002 form; 10 ODEs)
+
+State vector ((y_0,\dots,y_9)). Output (EEG/LFP surrogate):
+[
+v_\text{pyr}(t)=y_1 - y_2 - y_3
+]
+
+Sigmoid (2002 form):
+[
+S(v)=\frac{2 e_0}{1 + e^{r (v_0 - v)}}
+]
+
+Impulse responses → 2nd-order filters:
+
+* Excitatory: (h_e(t)=A,a,e^{-a t})
+* Slow inh: (h_i(t)=B,b,e^{-b t})
+* Fast inh: (h_g(t)=G,g,e^{-g t})
+
+Couplings (C_1\ldots C_7) per paper.
+
+Equations:
+[
+\begin{aligned}
+\dot y_0 &= y_5 \
+\dot y_5 &= A a,S(y_1-y_2-y_3) - 2a y_5 - a^2 y_0 \
+\dot y_1 &= y_6 \
+\dot y_6 &= A a,{p(t) - C_2 S(C_1 y_0)} - 2a y_6 - a^2 y_1 \
+\dot y_2 &= y_7 \
+\dot y_7 &= B b, C_4 S(C_3 y_0) - 2b y_7 - b^2 y_2 \
+\dot y_3 &= y_8 \
+\dot y_8 &= G g, C_7 S(C_5 y_0 - C_6 y_4) - 2g y_8 - g^2 y_3 \
+\dot y_4 &= y_9 \
+\dot y_9 &= B b, S(C_3 y_0) - 2b y_9 - b^2 y_4
+\end{aligned}
+]
+
+### Standard 2002 parameters (must be supported)
+
+* Gains: **A=3.25 mV, B=22 mV, G=10 mV**
+* Rates: **a=100 s⁻¹, b=50 s⁻¹, g=500 s⁻¹**  (i.e., τa=0.01 s, τb=0.02 s, τg=0.002 s; some later works round τb to 0.05 s and τg to 0.003 s — support both)
+* Sigmoid: **e0=2.5 s⁻¹, v0=6 mV, r=0.56 mV⁻¹**
+* Connectivity base (C=135):
+  (C_1=C), (C_2=0.8C), (C_3=C_4=0.25C), (C_5=0.3C), (C_6=0.1C), (C_7=0.8C)
+* External input (p(t)=p+\xi(t)) where (p \in [30,150]) Hz and (\xi) is zero-mean Gaussian (turn **off** for deterministic tests).
+
+### 2020 validation configuration (must also be supported)
+
+* Timescales: **τa=0.01 s, τb=0.05 s, τg=0.003 s**
+* Gains typical set (example Table 1 in 2020): **A=5, B=40, G=35**, (p=90) Hz, and their (S(v)) above.
+* Use this only in **Level-2** (slow–fast & pre-ictal bursting) and to confirm **Hopf/folds** structure.
+
+---
+
+## Implementation checklist (agent must pass all items)
+
+1. ✅ Integrator: explicit RK4 or Dormand–Prince; fixed **dt = 1e-4–2e-4 s** for PSD/bursting; stable with dt halved.
+2. ✅ Noise injection (p(t)) is **toggleable** and seeds are fixed for reproducibility.
+3. ✅ Output is **exactly** (v_\text{pyr}=y_1-y_2-y_3).
+4. ✅ Both sigmoid variants are implemented and switchable.
+5. ✅ Parameters accept either (a,b,g) or (τa,τb,τg) forms.
+6. ✅ Unit tests: with noise=0, solution remains finite and **energy decays** when placed near equilibrium (Level-0).
+7. ✅ Plots produced as PNG/SVG and saved with deterministic filenames for CI.
+
+---
+
+## Validation Levels
+
+### Level-0 — Deterministic sanity (no noise)
+
+**Goal:** prove ODEs are coded correctly and stable.
+
+* **Setup:** set (\sigma_p=0). Use 2002 parameters.
+  Init all 10 states with small non-zeros (e.g., `y = [0.1,-0.2,0.1,-0.1, 0,0,0,0, 0,0]`).
+* **Run:** simulate 2 s.
+* **Plots:** (i) (v_\text{pyr}(t)); (ii) phase portrait (v) vs (\dot v).
+* **Pass if:**
+
+  * Waveform is smooth and decays toward a fixed value (horizontal line) with no numerical blow-ups.
+  * Halving dt changes final mean by < 1e-3 and final std by < 1e-4 (numerical convergence).
+
+### Level-1 — Canonical activity patterns (time & frequency domain)
+
+**Goal:** reproduce hallmark modes. Do **both** time series and PSD.
+
+**Common settings:** 2002 parameterization; sampling ≥ 1 kHz; simulate 10 s; discard first 2 s; Welch PSD (Hann 1 s, 50% overlap).
+
+1. **Background (Type-1)**
+
+   * Example params: **A=3.25, B=22, G=10**, (p \approx 90) Hz, small noise.
+   * **Time:** low-amplitude, irregular fast activity.
+   * **PSD:** broadband, no dominant narrow peak.
+
+2. **Sustained alpha-like rhythm**
+
+   * Example (as commonly reported in educational notes): **A≈4, B=22, G=15** (keep others default), small (p).
+   * **Time:** stable, quasi-sinusoidal.
+   * **PSD:** sharp peak around **10–11 Hz**; peak prominence ≥ 10 dB over noise floor.
+
+3. **Spike-and-wave / epileptiform**
+
+   * Example: **A≈3.5, B=22, G≈25** (or raise G and slightly reduce (p)).
+   * **Time:** high-amp, periodic spike–slow-wave complexes.
+   * **PSD:** base peak around **2–4 Hz** with clear **harmonics** (integer multiples) visible.
+
+**Pass conditions (each mode):**
+
+* **Amplitude & morphology:** visual match with the literature archetypes (background vs regular oscillation vs spike-and-wave).
+* **Spectral:** peak frequency within target band; **Q-factor** of alpha mode > 5; spike-and-wave shows ≥ 2 harmonics with decreasing power.
+
+> Tip (for automation): compute features automatically: peak frequency, peak-to-median PSD ratio, number of harmonic peaks above −15 dB of the main peak, time-domain spike count per minute, coefficient of variation of inter-spike intervals.
+
+### Level-2 — Dynamics & bifurcations (1D scan and slow–fast features)
+
+**Goal:** show that the *map of behaviors* vs parameters matches the literature.
+
+#### A) 1-parameter bifurcation-style scan (simulation-based)
+
+* **Choose B** as control (slow inhibition). Fix others, e.g., **A=3.5, G=25** (2002 form) *or* use 2020 set for slow–fast analysis.
+* **B-range:** 10 → 30 in steps of 0.25 (≥ 81 points).
+* **Per-B simulation:** 3 s, discard 1 s transient.
+* **Feature extraction:** local maxima/minima of (v_\text{pyr}) in steady window; record all extrema.
+* **Plot:** **B** on x-axis; **extrema amplitude** on y-axis → **“poor-man’s” bifurcation diagram**.
+* **Pass if:** you see the **transition from equilibrium (single branch) to oscillations (upper/lower branches)** at a critical **B** (Hopf onset), a finite **oscillation window**, then return toward equilibrium when B leaves the window — qualitatively matching the reported shape (equilibrium → limit cycle → complex/large-amp → back).
+
+#### B) Slow–fast & pre-ictal bursting (2020 paper reproduction)
+
+* **Use 2020 timescales:** τa=0.01, τb=0.05, τg=0.003. Sigmoid (S(v)=5/(1+\exp(0.56(6-v)))). Start from their background set (**A=5, B=40, G=35, p=90**), then decrease **B** gradually to traverse: background → sporadic bursts (folded Z-curve region) → **sustained bursting** → **low-voltage fast onset (LVFO)**.
+* **What to demonstrate (plots):**
+
+  1. **Time series** showing three pre-ictal phases: sporadic bursts → sustained bursts (multi-spike within burst) → LVFO.
+  2. **Coarse continuation**: plot amplitude vs **B** (as above) and annotate **approximate Hopf region** and **fold region** by observing where equilibrium splits and where bursting terminates.
+  3. **Timescale separation evidence:** show that fast (PV+) variables oscillate within bursts while slow variables drift between bursts (e.g., overlay (v_\text{pyr}) and a proxy slow variable; demonstrate burst envelope evolves ≫ carrier).
+* **Pass if:** you can exhibit (i) a **Hopf-born fast oscillation window** at lower **B** when **G** is sufficiently large, (ii) a **folded Z-shaped equilibrium branch** region (empirically seen as sporadic or sustained bursting under weak noise), and (iii) LVFO emerging as **B** crosses the Hopf region.
+
+> Optional (advanced): if you have AUTO-07p available, numerically continue the **equilibrium branch vs B** to expose **H1/H2** and **folds (LP)**. Your simulation-based diagram should qualitatively match that structure (supercritical Hopf to fast oscillations; Z-folds delimiting bursting).
+
+---
+
+## Re-usable Python stubs (what the agent should actually emit & run)
+
+1. **Core model (vectorized)**
+
+* Implement a function `f(y, params, t, rng)` returning (\dot y).
+* Two sigmoids behind a flag: `"wendling2002"` and `"pcbi2020"`.
+* External input `p(t)=p + sigma_p * rng.normal()` at each step.
+* Provide both `(a,b,g)` and `(tau_a,tau_b,tau_g)` in params.
+
+2. **Integrator**
+
+* Deterministic RK4 (fastest to implement).
+  Step size default `dt=1e-4` s; allow override.
+
+3. **PSD & features**
+
+* Welch (SciPy or your own); return dominant peak Hz, prominence, harmonics count.
+
+4. **B-scan**
+
+* Loop over B, call simulator, discard transient, pick extrema (scipy.signal.argrelextrema or rolling window), dump CSV of `B, v_max, v_min, mean(v)`.
+
+5. **Plots**
+
+* Time series; PSD; bifurcation-like extrema diagram. Save as `png` with parameter metadata in filename.
+
+---
+
+## Acceptance summary (quick checklist to sign off)
+
+* **L0:** No-noise run decays to fixed value; dt halving stable.
+* **L1-Background:** broadband PSD, no sharp peak.
+* **L1-Alpha:** sharp 10–11 Hz peak; steady oscillation.
+* **L1-Spike-and-wave:** 2–4 Hz fundamental + harmonics; clear SW complexes.
+* **L2-B-scan:** equilibrium → oscillation window → back; clear Hopf-like onset.
+* **L2-Slow–fast:** shows sporadic → sustained bursting → LVFO as **B** decreases (with 2020 timescales); qualitative agreement with the reported Z-fold/ Hopf structure.
+
+---
+
+## Common pitfalls (and how the agent should auto-guard)
+
+* **Wrong output:** must be (y_1 - y_2 - y_3), not (y_0). Add a unit test.
+* **Sigmoid mismatch:** alpha/spike-and-wave checks will fail if you mix 2002 vs 2020 sigmoid. Expose a `sigmoid_version` flag and log it.
+* **Too-large dt:** will smear the LVFO and distort PSD peaks. Enforce dt ≤ 2e-4 s for L1/L2 and log a warning otherwise.
+* **Forgetting (C_6) term in fast-inh loop:** kills the fast loop’s gating; check that (C_5 y_0 - C_6 y_4) is used.
+* **Noise left on in Level-0:** deterministic test must have **sigma_p=0**.
+
+---
+
+## Minimal driver (pseudo-API the agent should expose)
+
+```python
+sim = WendlingNMM(sigmoid="wendling2002")  # or "pcbi2020"
+sim.set_params(A=3.25, B=22, G=10, a=100, b=50, g=500, C=135, p=90, sigma_p=0.0)
+t, v = sim.run(tstop=2.0, dt=1e-4, y0=init_vector)
+plots.time_series(t, v, "L0_decay.png")
+
+# Level-1 modes
+cfgs = [
+  dict(name="background", A=3.25, B=22, G=10, p=90, sigma_p=5),
+  dict(name="alpha",      A=4.0,  B=22, G=15, p=60, sigma_p=2),
+  dict(name="spikewave",  A=3.5,  B=22, G=25, p=80, sigma_p=2),
+]
+for cfg in cfgs: run_and_check(cfg)
+
+# Level-2 scan
+scan_B = np.linspace(10, 30, 81)
+results = []
+for Bval in scan_B:
+    sim.set_params(B=Bval, sigma_p=0.5)
+    t, v = sim.run(tstop=3.0, dt=2e-4, discard=1.0)
+    vmin, vmax = extrema(v)
+    results.append((Bval, vmin, vmax))
+plots.bifurcation(results, "bscan.png")
+```
+
+---
+
+## What to include in the final report (that your agent returns)
+
+* **Code cells / files** used (model, runner, plots).
+* **Three figures** for Level-1 (time+PSD per mode).
+* **One figure** for Level-2 (B-scan extrema diagram), plus an illustrative **slow–fast** trace (carrier vs envelope) if you ran the 2020 set.
+* **One-paragraph verdict** for each step explicitly referencing the success criteria above.
+
+---
+
+If you want, I can drop in a ready-to-run Python file scaffold (model + runner + plotting) and a small test harness that emits the full report in one shot.
