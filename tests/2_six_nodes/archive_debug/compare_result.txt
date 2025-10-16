@@ -1,0 +1,33 @@
+================================================================================
+Compare Type1: Single-node vs Multi-node
+================================================================================
+
+Test 1: SINGLE NODE (N=1)
+  Parameters: B=50, G=15, p_sigma=2.0
+  Running...
+
+  Result:
+    mean = -0.5768
+    std  = 0.0000
+    min  = -0.5770
+    max  = -0.5767
+
+--------------------------------------------------------------------------------
+Test 2: MULTI-NODE (N=3, all Type1, K_gl=0)
+  Parameters: B=50, G=15, p_sigma=2.0, heterogeneity=0.01, random_init=True
+  Running...
+
+  Results:
+    Node 0: mean=-0.5768, std=0.0001
+    Node 1: mean=-0.5768, std=0.0001
+    Node 2: mean=-0.5768, std=0.0001
+
+================================================================================
+SUMMARY
+================================================================================
+Single-node std:  0.0000
+Multi-node std:   0.0001
+
+Type1 (B=50, G=15, p_sigma=2.0) does NOT oscillate with random_init=False OR True
+This may be the expected behavior - Type1 needs different p_sigma?
+================================================================================

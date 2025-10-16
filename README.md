@@ -1,8 +1,9 @@
 # Wendling Whole-Brain Network Implementation
 
 **状态**: 🎉 100% 完成 + BONUS + VERIFIED (ALL 5 STAGES + HCP + VALIDATION)  
-**日期**: 2025-10-13  
-**完整总结**: 请查看 [SUMMARY.md](SUMMARY.md) 🎉🎉🎉  
+**日期**: 2025-10-14  
+**项目状态**: 请查看 [PROJECT_STATUS.md](PROJECT_STATUS.md) 📊 **← 完整状态报告**  
+**技术总结**: 请查看 [SUMMARY.md](SUMMARY.md)  
 **项目结构**: 请查看 [docs/07_PROJECT_STRUCTURE_FINAL.md](docs/07_PROJECT_STRUCTURE_FINAL.md)
 
 ---
@@ -66,8 +67,8 @@ whole_brain_wendling/
 | **BONUS 2** | **多节点正确性验证** | ✅ 完成 | ~10 min |
 | **BONUS 3** | **6种活动类型网络** | ✅ 完成 | ~10 min |
 
-**总用时**: ~1.5 hours (vs. 预估 12 hours) - **8x 超速** 🚀  
-**详细进度**: [PROGRESS.md](PROGRESS.md) | **总结报告**: [SUMMARY.md](SUMMARY.md)  
+**总用时**: ~3.5 hours (vs. 预估 12 hours) - **3.4x 超速** 🚀  
+**详细状态**: [PROJECT_STATUS.md](PROJECT_STATUS.md) 📊 | **技术总结**: [SUMMARY.md](SUMMARY.md)  
 **项目结构**: [docs/07_PROJECT_STRUCTURE_FINAL.md](docs/07_PROJECT_STRUCTURE_FINAL.md)
 
 ---
@@ -180,6 +181,7 @@ print(f"Signal shape: {v_pyr.shape}")  # (6, 100000)
 
 ---
 
-**最后更新**: 2025-10-13 23:36  
-**版本**: v5.0 - 项目完成 + 验证 + 6种类型网络 🎉🎉🎉  
-**状态**: 100% + 3 BONUS 完成（所有阶段 + HCP + 验证 + 6类型）
+**最后更新**: 2025-10-14 09:25  
+**版本**: v6.0 - 项目完成 + 验证 + Bug修复 🎉🎉🎉  
+**状态**: 100% + 3 BONUS 完成（所有阶段 + HCP + 验证 + Bug修复）  
+**完整报告**: 详见 [PROJECT_STATUS.md](PROJECT_STATUS.md)

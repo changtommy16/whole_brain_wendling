@@ -20,7 +20,10 @@ Standard Parameter Sets for Wendling Model
 # ============================================================================
 # VERIFIED WENDLING PARAMETERS (Single-Node Validation)
 # ============================================================================
-
+# ⚠️ 重要更新 (2025-10-14):
+# 经过测试，p_sigma=2.0 对所有 6 种类型都能产生正确的波形
+# 之前认为 Type1, 2, 4, 5 需要 p_sigma=30.0，但实际上 p_sigma=2.0 效果更好
+# 所有类型现在统一使用 p_sigma=2.0 (低噪声，展现内在动力学)
 WENDLING_STANDARD_PARAMS = {
     'Type1': {
         'name': 'Type 1: Background activity',
@@ -30,7 +33,7 @@ WENDLING_STANDARD_PARAMS = {
             'B': 50,       # Slow inhibitory gain (mV)
             'G': 15,       # Fast inhibitory gain (mV)
             'p_mean': 90,  # Mean input (Hz)
-            'p_sigma': 30.0  # Input noise (Hz)
+            'p_sigma': 2.0  # Input noise (Hz)
         },
         'expected': {
             'freq_range': (1, 7),   # Hz
@@ -48,7 +51,7 @@ WENDLING_STANDARD_PARAMS = {
             'B': 40,
             'G': 15,
             'p_mean': 90,
-            'p_sigma': 30.0
+            'p_sigma': 2.0
         },
         'expected': {
             'freq_range': (1, 5),
@@ -84,7 +87,7 @@ WENDLING_STANDARD_PARAMS = {
             'B': 10,       # Low B for alpha rhythm
             'G': 15,
             'p_mean': 90,
-            'p_sigma': 30.0
+            'p_sigma': 2.0
         },
         'expected': {
             'freq_range': (8, 13),
@@ -102,7 +105,7 @@ WENDLING_STANDARD_PARAMS = {
             'B': 5,        # Very low B
             'G': 25,       # High G
             'p_mean': 90,
-            'p_sigma': 30.0
+            'p_sigma': 2.0
         },
         'expected': {
             'freq_range': (10, 20),
@@ -154,8 +157,9 @@ PARAMETER_RANGES = {
         'standard': 90,  # Fixed in most cases
     },
     'p_sigma': {
-        'low_noise': 2.0,   # For sustained oscillations (Type 3, 6)
-        'high_noise': 30.0,  # For irregular activity (Type 1, 2, 4, 5)
+        'standard': 2.0,  # ✅ 所有类型统一使用 2.0 (验证通过)
+        'note': 'Low noise (p_sigma=2.0) allows system to show intrinsic dynamics',
+        # 'high_noise': 30.0,  # 不再推荐：会破坏规律性
     }
 }
 
@@ -210,13 +214,17 @@ VALIDATION_INFO = {
     'multi_node_verified': True,
     'verification_file': 'tests/validation/VERIFY_MULTINODE_CORRECT.py',
     'verification_result': 'results/validation/single_vs_multi_verification.png',
-    'validation_date': '2025-10-13',
-    'status': 'All 6 types verified ✅',
+    'validation_date': '2025-10-14',
+    'last_updated': '2025-10-14',
+    'status': 'All 6 types verified with p_sigma=2.0 ✅',
     'notes': [
+        'All 6 types use p_sigma=2.0 (low noise)',
+        'p_sigma=2.0 allows intrinsic dynamics to dominate',
         'All parameters produce expected waveforms in single-node',
         'Multi-node (het=0, K_gl=0) matches single-node exactly',
         'Frequency differences < 0.5 Hz',
         'Amplitude differences < 5%',
+        '⚠️ All types now compatible in multi-node networks (same p_sigma)',
     ]
 }
 

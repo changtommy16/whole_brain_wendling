@@ -1,0 +1,42 @@
+================================================================================
+6-Nodes Complete Network Analysis (FIXED)
+================================================================================
+
+Generating random connectivity matrix...
+  Target density: 60%
+  Connections: 9/15
+  Actual density: 60.00%
+
+Network Configuration:
+  Nodes: 6
+  Connections: 9
+  Density: 60.00%
+  Weight range: [0.5, 1.5]
+python : Traceback (most rec
+ent call last):
+?? ??:1 ??:1
++ python test_03_complete_an
+alysis_FIXED.py 2>&1 | Out-F
+ile -Encoding A ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (Trace  
+  back (most recent call    
+ last)::String) [], Remo    
+teException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+  File "C:\Epilepsy_project\
+whole_brain_wendling\tests\2
+_six_nodes\test_03_complete_
+analysis_FIXED.py", line 101
+, in <module>
+    print(f"\n\u2b50 Using M
+ANUAL parameter assignment (
+STANDARD_PARAMETERS)")
+UnicodeEncodeError: 'cp950' 
+codec can't encode character
+ '\u2b50' in position 2: ill
+egal multibyte sequence

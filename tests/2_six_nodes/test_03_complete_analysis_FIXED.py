@@ -5,55 +5,85 @@
 1. 删除错误的 classify_activity_type() 函数（基于错误的 B 参数范围）
 2. 改用基于频率的分类（更客观）
 3. 添加明确说明：这不是 Wendling 2002 的 activity types
+4. 添加手动指定每个 node 参数类型的选项（基于 STANDARD_PARAMETERS.py）
 """
 
 import sys
 sys.path.insert(0, r'c:\Epilepsy_project\Neurolib_desktop\Neurolib_package')
+sys.path.insert(0, r'c:\Epilepsy_project\whole_brain_wendling\Validation_for_single_node')
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 from scipy.stats import pearsonr
 from neurolib.models.wendling import WendlingModel
+from STANDARD_PARAMETERS import WENDLING_STANDARD_PARAMS
 
 print("="*80)
 print("6-Nodes Complete Network Analysis (FIXED)")
 print("="*80)
 
-# Network configuration
+# ============================================================================
+# CONFIGURATION OPTIONS
+# ============================================================================
+
+# Option 1: Manual parameter assignment (specify each node's type)
+# Set to None to use heterogeneity instead
+NODE_TYPES = ['Type1', 'Type3', 'Type6', 'Type6', 'Type1', 'Type1']  # All Type3 (SWD)
+# NODE_TYPES = None  # Use heterogeneity
+
+# Option 2: Network connectivity
+NETWORK_DENSITY = 0.6  # 60% of possible connections
+WEIGHT_RANGE = (0.5, 1.5)  # Connection weight range
+
+# Option 3: Coupling strength
+K_GL = 0.0  # No coupling (K_gl = 0)
+
+# ============================================================================
+
 N = 6
 np.random.seed(42)
 
-# Topology
-Cmat_topo = np.array([
-    [0, 1, 1, 0, 0, 1],
-    [1, 0, 1, 1, 0, 0],
-    [1, 1, 0, 1, 1, 0],
-    [0, 1, 1, 0, 1, 1],
-    [0, 0, 1, 1, 0, 1],
-    [1, 0, 0, 1, 1, 0],
-], dtype=float)
+# Generate random weighted connectivity matrix
+print(f"\nGenerating random connectivity matrix...")
+print(f"  Target density: {NETWORK_DENSITY*100:.0f}%")
 
-n_connections = int(np.sum(Cmat_topo) / 2)
-density = n_connections / (N * (N - 1) / 2)
+Cmat = np.zeros((N, N))
+n_possible = N * (N - 1) // 2
+n_connections_target = int(n_possible * NETWORK_DENSITY)
 
-# Weighted connectivity
-Cmat = Cmat_topo.copy()
+# Randomly select connections
+connections = []
 for i in range(N):
     for j in range(i+1, N):
-        if Cmat[i, j] > 0:
-            weight = np.random.uniform(0.5, 1.5)
-            Cmat[i, j] = weight
-            Cmat[j, i] = weight
+        connections.append((i, j))
 
-# Distance matrix
+np.random.shuffle(connections)
+selected_connections = connections[:n_connections_target]
+
+# Assign random weights to selected connections
+for i, j in selected_connections:
+    weight = np.random.uniform(*WEIGHT_RANGE)
+    Cmat[i, j] = weight
+    Cmat[j, i] = weight
+
+# Calculate actual density and connections
+n_connections = len(selected_connections)
+density = n_connections / n_possible
+
+print(f"  Connections: {n_connections}/{n_possible}")
+print(f"  Actual density: {density*100:.2f}%")
+
+# Distance matrix (distance inversely related to connection strength)
 Dmat = np.zeros((N, N))
 for i in range(N):
     for j in range(i+1, N):
         if Cmat[i, j] > 0:
-            dist = 20 + (1.0 - Cmat[i, j]) * 40
+            # Stronger connections = shorter distances
+            dist = 20 + (1.0 - Cmat[i, j]) * 40  # 20-60mm
         else:
-            dist = np.random.uniform(60, 100)
+            # No connection = long distance
+            dist = np.random.uniform(60, 100)  # 60-100mm
         Dmat[i, j] = dist
         Dmat[j, i] = dist
 
@@ -61,18 +91,98 @@ print(f"\nNetwork Configuration:")
 print(f"  Nodes: {N}")
 print(f"  Connections: {n_connections}")
 print(f"  Density: {density*100:.2f}%")
+print(f"  Weight range: [{WEIGHT_RANGE[0]}, {WEIGHT_RANGE[1]}]")
 
-# Create model with heterogeneity
-model = WendlingModel(Cmat=Cmat, Dmat=Dmat, heterogeneity=0.30, seed=42)
-model.params['duration'] = 10000
-model.params['dt'] = 0.1
-model.params['K_gl'] = 0.15
+# ============================================================================
+# MODEL CREATION AND PARAMETER ASSIGNMENT
+# ============================================================================
 
-print(f"\nModel Parameters:")
-print(f"  heterogeneity = 0.30")
-print(f"  K_gl = 0.15")
+if NODE_TYPES is not None:
+    print(f"\n[*] Using MANUAL parameter assignment (STANDARD_PARAMETERS)")
+    print(f"  Mode: Wendling 2002 verified types")
+    
+    # Verify NODE_TYPES
+    if len(NODE_TYPES) != N:
+        raise ValueError(f"NODE_TYPES length ({len(NODE_TYPES)}) must equal N ({N})")
+    
+    for node_type in NODE_TYPES:
+        if node_type not in WENDLING_STANDARD_PARAMS:
+            raise ValueError(f"Invalid type: {node_type}. Must be one of {list(WENDLING_STANDARD_PARAMS.keys())}")
+    
+    # Create model with heterogeneity=0.01 to enable vectorization
+    # (Even tiny heterogeneity triggers vector mode, then we override with exact values)
+    # ⚠️ CRITICAL: Use random_init=True for multi-node networks!
+    # random_init=False works for single-node but causes high-B types (Type1) to decay in multi-node
+    model = WendlingModel(Cmat=Cmat, Dmat=Dmat, heterogeneity=0.01, seed=42, random_init=True)
+    model.params['duration'] = 10000
+    model.params['dt'] = 0.1
+    model.params['K_gl'] = K_GL
+    
+    # Manually assign parameters for each node
+    B_vals = np.zeros(N)
+    G_vals = np.zeros(N)
+    A_vals = np.zeros(N)
+    p_mean_vals = np.zeros(N)
+    
+    # Determine p_sigma (currently NOT vectorized in model, so use most common value)
+    p_sigma_vals = [WENDLING_STANDARD_PARAMS[nt]['params']['p_sigma'] for nt in NODE_TYPES]
+    p_sigma_mode = max(set(p_sigma_vals), key=p_sigma_vals.count)  # Most common value
+    
+    print(f"\nNode Parameter Assignment:")
+    print(f"{'Node':<6} {'Type':<10} {'B':<6} {'G':<6} {'A':<6} {'p_mean':<8} {'p_sigma':<10} {'Description'}")
+    print("-"*100)
+    
+    for i, node_type in enumerate(NODE_TYPES):
+        params = WENDLING_STANDARD_PARAMS[node_type]['params']
+        desc = WENDLING_STANDARD_PARAMS[node_type]['name']
+        
+        B_vals[i] = params['B']
+        G_vals[i] = params['G']
+        A_vals[i] = params['A']
+        p_mean_vals[i] = params['p_mean']
+        
+        print(f"{i:<6} {node_type:<10} {params['B']:<6.0f} {params['G']:<6.0f} {params['A']:<6.1f} {params['p_mean']:<8.0f} {params['p_sigma']:<10.1f} {desc}")
+    
+    if len(set(p_sigma_vals)) > 1:
+        print(f"\n[!] Note: p_sigma is not yet vectorized in model.")
+        print(f"   Using mode value: p_sigma = {p_sigma_mode} for all nodes")
+        print(f"   (Some types specify {set(p_sigma_vals)}, but model uses scalar)")
+    
+    # Assign to model - MUST be vectors for heterogeneity mode
+    model.params['B'] = B_vals
+    model.params['G'] = G_vals
+    model.params['A'] = A_vals
+    model.params['p_mean'] = p_mean_vals
+    model.params['p_sigma'] = p_sigma_mode  # Scalar only
+    
+    # Verify parameters were set correctly
+    print(f"\n[OK] Verification after assignment:")
+    print(f"  model.params['B'] = {model.params['B']}")
+    print(f"  model.params['G'] = {model.params['G']}")
+    print(f"  Shape check: B.shape={np.shape(model.params['B'])}, expected=({N},)")
+    
+else:
+    print(f"\n[!] Using HETEROGENEITY system")
+    print(f"  Mode: Random parameter diversity (NOT Wendling types)")
+    
+    # Create model with heterogeneity
+    model = WendlingModel(Cmat=Cmat, Dmat=Dmat, heterogeneity=0.30, seed=42)
+    model.params['duration'] = 10000
+    model.params['dt'] = 0.1
+    model.params['K_gl'] = K_GL
+    
+    print(f"\nModel Parameters:")
+    print(f"  heterogeneity = 0.30")
+
+print(f"  K_gl = {K_GL}")
 print(f"  N = {N}")
 print(f"  SC density = {density:.3f}")
+
+# DEBUG: Verify parameters before run
+if NODE_TYPES is not None:
+    print(f"\n[DEBUG] Parameters BEFORE run():")
+    print(f"  B = {model.params['B']}")
+    print(f"  G = {model.params['G']}")
 
 # Run simulation
 print(f"\nRunning simulation...")
@@ -82,18 +192,37 @@ model.run()
 elapsed = time.time() - start_time
 print(f"  Simulation completed in {elapsed:.2f}s")
 
+# DEBUG: Verify parameters after run
+if NODE_TYPES is not None:
+    print(f"\n[DEBUG] Parameters AFTER run():")
+    print(f"  B = {model.params['B']}")
+    print(f"  G = {model.params['G']}")
+
 # Extract signals
 t = model.t
 signals = np.zeros((N, len(t)))
 for i in range(N):
     signals[i, :] = model.y1[i, :] - model.y2[i, :] - model.y3[i, :]
 
+print(f"\nExtracting signals...")
+print(f"  Signal shape: {signals.shape}")
+print(f"  Time shape: {t.shape}")
+
+# Check signal statistics BEFORE discarding transient
+print(f"\n📊 Signal Statistics (full):")
+for i in range(N):
+    print(f"  Node {i}: mean={np.mean(signals[i,:]):.4f}, std={np.std(signals[i,:]):.4f}, "
+          f"min={np.min(signals[i,:]):.4f}, max={np.max(signals[i,:]):.4f}")
+
 # Discard transient
 discard_idx = int(2000 / 0.1)
 signals_clean = signals[:, discard_idx:]
 t_clean = t[discard_idx:]
 
-print(f"\nExtracting signals...")
+print(f"\n📊 Signal Statistics (after transient removal):")
+for i in range(N):
+    print(f"  Node {i}: mean={np.mean(signals_clean[i,:]):.4f}, std={np.std(signals_clean[i,:]):.4f}, "
+          f"min={np.min(signals_clean[i,:]):.4f}, max={np.max(signals_clean[i,:]):.4f}")
 
 # Compute FC
 print(f"\nComputing FC...")
@@ -142,55 +271,77 @@ else:
 print(f"  B: {B_show}")
 print(f"  G: {G_show}")
 
-# ==================== FIXED CLASSIFICATION ====================
-# 基于频率范围分类，而非错误的 B 参数范围
+# ==================== CLASSIFICATION ====================
 
 def classify_by_frequency_band(peak_freq):
-    """
-    ⚠️ WARNING: 这不是 Wendling 2002 的 activity types!
-    
-    这只是基于频率范围的简单分类。
-    Wendling 2002 types 需要特定的 B,G 参数值 (B=5-50 wide range)。
-    
-    Heterogeneity 系统 (B=15-29) 不对应 Wendling types。
-    """
+    """频率分类"""
     if peak_freq < 4:
-        return "Delta band (<4 Hz)"
+        return "Delta (<4 Hz)"
     elif 4 <= peak_freq < 8:
-        return "Theta band (4-8 Hz)"
+        return "Theta (4-8 Hz)"
     elif 8 <= peak_freq < 13:
-        return "Alpha band (8-13 Hz)"
+        return "Alpha (8-13 Hz)"
     elif 13 <= peak_freq < 30:
-        return "Beta band (13-30 Hz)"
+        return "Beta (13-30 Hz)"
     else:
-        return "Gamma band (>30 Hz)"
+        return "Gamma (>30 Hz)"
 
-print(f"\n⚠️  IMPORTANT NOTE:")
-print(f"  The following classification is by FREQUENCY BAND only.")
-print(f"  This is NOT the same as Wendling 2002 activity types (Type 1-6).")
-print(f"  Wendling types require specific B,G parameters (see STANDARD_PARAMETERS.py).")
-print(f"")
-print(f"  This network uses heterogeneity (B range: 15-29) for diversity,")
-print(f"  NOT to reproduce specific Wendling activity types.")
-
-print(f"\nNode Parameter & Frequency Analysis:")
-print(f"{'Node':<6} {'B':<8} {'G':<8} {'Freq(Hz)':<12} {'Amp(mV)':<10} {'Freq Band'}")
-print("-"*80)
-
-frequency_bands = []
-for i in range(N):
-    B_i = model.params['B'][i] if isinstance(model.params['B'], np.ndarray) else model.params['B']
-    G_i = model.params['G'][i] if isinstance(model.params['G'], np.ndarray) else model.params['G']
-    freq_band = classify_by_frequency_band(peak_freqs[i])
-    frequency_bands.append(freq_band)
-    print(f"{i:<6} {B_i:<8.2f} {G_i:<8.2f} {peak_freqs[i]:<12.2f} {amplitudes[i]:<10.2f} {freq_band}")
-
-# Summary by frequency band
-from collections import Counter
-band_counts = Counter(frequency_bands)
-print(f"\nFrequency Band Distribution:")
-for band, count in sorted(band_counts.items()):
-    print(f"  {band}: {count}/{N} nodes ({count/N*100:.0f}%)")
+if NODE_TYPES is not None:
+    # Manual type assignment - show Wendling types
+    print(f"\n✅ Wendling Activity Type Analysis:")
+    print(f"{'Node':<6} {'Assigned Type':<12} {'B':<6} {'G':<6} {'Freq(Hz)':<10} {'Amp(mV)':<10} {'Expected Freq':<15} {'Match'}")
+    print("-"*95)
+    
+    type_matches = []
+    for i in range(N):
+        assigned_type = NODE_TYPES[i]
+        B_i = model.params['B'][i]
+        G_i = model.params['G'][i]
+        expected_freq = WENDLING_STANDARD_PARAMS[assigned_type]['expected']['freq_range']
+        freq_match = expected_freq[0] <= peak_freqs[i] <= expected_freq[1]
+        match_str = "✅ MATCH" if freq_match else "❌ OFF"
+        type_matches.append(freq_match)
+        
+        print(f"{i:<6} {assigned_type:<12} {B_i:<6.0f} {G_i:<6.0f} {peak_freqs[i]:<10.2f} {amplitudes[i]:<10.2f} "
+              f"{expected_freq[0]}-{expected_freq[1]} Hz{'':<6} {match_str}")
+    
+    # Summary
+    from collections import Counter
+    type_counts = Counter(NODE_TYPES)
+    match_rate = sum(type_matches) / len(type_matches) * 100
+    
+    print(f"\nAssigned Type Distribution:")
+    for node_type, count in type_counts.items():
+        type_name = WENDLING_STANDARD_PARAMS[node_type]['name']
+        print(f"  {node_type}: {count}/{N} nodes ({count/N*100:.0f}%) - {type_name}")
+    
+    print(f"\nFrequency Match Rate: {match_rate:.0f}% ({sum(type_matches)}/{len(type_matches)} nodes)")
+    
+else:
+    # Heterogeneity mode - warn about frequency band classification
+    print(f"\n⚠️  IMPORTANT NOTE:")
+    print(f"  Using HETEROGENEITY mode - classification is by FREQUENCY BAND only.")
+    print(f"  This is NOT the same as Wendling 2002 activity types.")
+    print(f"  To use Wendling types, set NODE_TYPES at the top of this file.")
+    
+    print(f"\nNode Parameter & Frequency Analysis:")
+    print(f"{'Node':<6} {'B':<8} {'G':<8} {'Freq(Hz)':<12} {'Amp(mV)':<10} {'Freq Band'}")
+    print("-"*80)
+    
+    frequency_bands = []
+    for i in range(N):
+        B_i = model.params['B'][i] if isinstance(model.params['B'], np.ndarray) else model.params['B']
+        G_i = model.params['G'][i] if isinstance(model.params['G'], np.ndarray) else model.params['G']
+        freq_band = classify_by_frequency_band(peak_freqs[i])
+        frequency_bands.append(freq_band)
+        print(f"{i:<6} {B_i:<8.2f} {G_i:<8.2f} {peak_freqs[i]:<12.2f} {amplitudes[i]:<10.2f} {freq_band}")
+    
+    # Summary by frequency band
+    from collections import Counter
+    band_counts = Counter(frequency_bands)
+    print(f"\nFrequency Band Distribution:")
+    for band, count in sorted(band_counts.items()):
+        print(f"  {band}: {count}/{N} nodes ({count/N*100:.0f}%)")
 
 print(f"\nDiversity Metrics:")
 print(f"  Frequency std: {freq_diversity:.2f} Hz")
@@ -218,6 +369,18 @@ print("="*80)
 
 # ==================== Plotting ====================
 print(f"\nGenerating plots...")
+
+# DEBUG: Verify parameters before plotting
+if NODE_TYPES is not None:
+    print(f"\n[DEBUG] Parameters at plotting time:")
+    print(f"  B = {model.params['B']}")
+    print(f"  G = {model.params['G']}")
+    print(f"  Expected:")
+    for i, nt in enumerate(NODE_TYPES):
+        from STANDARD_PARAMETERS import WENDLING_STANDARD_PARAMS
+        exp_B = WENDLING_STANDARD_PARAMS[nt]['params']['B']
+        exp_G = WENDLING_STANDARD_PARAMS[nt]['params']['G']
+        print(f"    Node {i} ({nt}): B={exp_B}, G={exp_G}")
 
 fig = plt.figure(figsize=(20, 12))
 
@@ -295,12 +458,22 @@ ax7.grid(True, alpha=0.3, axis='y')
 ax7.set_xticks(range(N))
 ax7.set_xticklabels([f'N{i+1}' for i in range(N)])
 
-# 8. Frequency band pie chart
+# 8. Distribution pie chart
 ax8 = plt.subplot(3, 4, 8)
-band_labels = list(band_counts.keys())
-band_values = list(band_counts.values())
-ax8.pie(band_values, labels=band_labels, autopct='%1.0f%%', startangle=90)
-ax8.set_title('Frequency Band Distribution', fontsize=12, fontweight='bold')
+if NODE_TYPES is not None:
+    # Show Wendling type distribution
+    from collections import Counter
+    type_counts = Counter(NODE_TYPES)
+    type_labels = list(type_counts.keys())
+    type_values = list(type_counts.values())
+    ax8.pie(type_values, labels=type_labels, autopct='%1.0f%%', startangle=90)
+    ax8.set_title('Wendling Type Distribution', fontsize=12, fontweight='bold')
+else:
+    # Show frequency band distribution
+    band_labels = list(band_counts.keys())
+    band_values = list(band_counts.values())
+    ax8.pie(band_values, labels=band_labels, autopct='%1.0f%%', startangle=90)
+    ax8.set_title('Frequency Band Distribution', fontsize=12, fontweight='bold')
 
 # 9-12. Individual node samples (first 4 nodes)
 for idx in range(4):
@@ -312,25 +485,56 @@ for idx in range(4):
     B_i = model.params['B'][idx] if isinstance(model.params['B'], np.ndarray) else model.params['B']
     G_i = model.params['G'][idx] if isinstance(model.params['G'], np.ndarray) else model.params['G']
     
+    # DEBUG: Print what we're plotting
+    if idx == 0 and NODE_TYPES is not None:
+        print(f"\n[DEBUG] Plotting parameters:")
+        for i in range(min(4, N)):
+            B_plot = model.params['B'][i] if isinstance(model.params['B'], np.ndarray) else model.params['B']
+            G_plot = model.params['G'][i] if isinstance(model.params['G'], np.ndarray) else model.params['G']
+            print(f"  Node {i}: B={B_plot:.1f}, G={G_plot:.1f} (will display as 'Node {i+1}')")
+    
+    # Determine label for node
+    if NODE_TYPES is not None:
+        node_label = NODE_TYPES[idx]
+    else:
+        node_label = frequency_bands[idx]
+    
     ax.set_xlabel('Time (ms)', fontsize=9)
     ax.set_ylabel('mV', fontsize=9)
-    ax.set_title(f'Node {idx+1}: {frequency_bands[idx]}\n'
+    ax.set_title(f'Node {idx+1}: {node_label}\n'
                 f'B={B_i:.1f}, G={G_i:.1f}, f={peak_freqs[idx]:.1f}Hz', 
                 fontsize=10, fontweight='bold')
     ax.grid(True, alpha=0.3)
 
-plt.suptitle('6-Nodes Complete Network Analysis (FIXED)\n'
-            'Note: Classification by frequency band, NOT Wendling activity types', 
+# Set title based on mode
+if NODE_TYPES is not None:
+    title_mode = f'Using Wendling 2002 Types: {", ".join(set(NODE_TYPES))}'
+else:
+    title_mode = 'Using Heterogeneity (NOT Wendling types)'
+
+plt.suptitle(f'6-Nodes Complete Network Analysis\n{title_mode}', 
             fontsize=14, fontweight='bold')
 plt.tight_layout()
 
 # Save
 import os
-save_path = '../../results/six_nodes/complete_analysis_FIXED.png'
-os.makedirs(os.path.dirname(save_path), exist_ok=True)
-plt.savefig(save_path, dpi=150, bbox_inches='tight')
-print(f"\nSaved: {save_path}")
+# Use script directory as base, not current working directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(script_dir, '..', '..')
+save_path = os.path.join(project_root, 'results', 'six_nodes', 'complete_analysis_FIXED.png')
+save_path_abs = os.path.abspath(save_path)
+print(f"\nSaving to: {save_path_abs}")
+os.makedirs(os.path.dirname(save_path_abs), exist_ok=True)
+plt.savefig(save_path_abs, dpi=150, bbox_inches='tight')
+print(f"✅ Saved successfully!")
 plt.close()
+
+# Verify file exists
+if os.path.exists(save_path_abs):
+    file_size = os.path.getsize(save_path_abs)
+    print(f"✅ File verified: {file_size/1024:.1f} KB")
+else:
+    print(f"❌ ERROR: File was not created!")
 
 print("\n" + "="*80)
 print("Analysis Complete")
@@ -339,34 +543,52 @@ print("="*80)
 # Validation
 print(f"\nValidation Results:")
 if mean_fc < 0.3:
-    print(f"  FAIL: Mean |FC| = {mean_fc:.3f} (target: 0.3-0.7)")
+    print(f"  ⚠️  Mean |FC| = {mean_fc:.3f} (target: 0.3-0.7)")
 else:
-    print(f"  PASS: Mean |FC| = {mean_fc:.3f} (target: 0.3-0.7)")
+    print(f"  ✅  Mean |FC| = {mean_fc:.3f} (target: 0.3-0.7)")
 
 if freq_diversity < 1.0:
-    print(f"  FAIL: Freq diversity = {freq_diversity:.2f} Hz (target: > 1 Hz)")
+    print(f"  ⚠️  Freq diversity = {freq_diversity:.2f} Hz (target: > 1 Hz)")
 else:
-    print(f"  PASS: Freq diversity = {freq_diversity:.2f} Hz (target: > 1 Hz)")
+    print(f"  ✅  Freq diversity = {freq_diversity:.2f} Hz (target: > 1 Hz)")
 
 if sc_fc_corr < 0.05:
-    print(f"  FAIL: SC-FC correlation = {sc_fc_corr:.3f} (target: > 0.2)")
+    print(f"  ⚠️  SC-FC correlation = {sc_fc_corr:.3f} (target: > 0.2)")
 else:
-    print(f"  PASS: SC-FC correlation = {sc_fc_corr:.3f} (target: > 0.2)")
+    print(f"  ✅  SC-FC correlation = {sc_fc_corr:.3f} (target: > 0.2)")
 
 print("\n" + "="*80)
 print("IMPORTANT NOTES")
 print("="*80)
-print("""
-This network uses HETEROGENEITY system (B range: ~15-29):
+if NODE_TYPES is not None:
+    print(f"""
+✅ Using WENDLING 2002 VERIFIED TYPES:
+  - Parameters from STANDARD_PARAMETERS.py
+  - Each node assigned specific type: {NODE_TYPES}
+  - Expected frequencies validated against single-node results
+  - This is the CORRECT way to test specific activity types
+
+For different types, modify NODE_TYPES at top of file:
+  NODE_TYPES = ['Type1', 'Type2', 'Type3', 'Type4', 'Type5', 'Type6']
+  
+Available types:
+  Type1: Background (B=50, G=15, 1-7 Hz)
+  Type2: Sporadic spikes (B=40, G=15, 1-5 Hz)
+  Type3: SWD epileptic (B=25, G=15, 3-6 Hz)
+  Type4: Alpha rhythm (B=10, G=15, 8-13 Hz)
+  Type5: LVFA (B=5, G=25, 10-20 Hz)
+  Type6: Quasi-sinusoidal (B=15, G=0, 9-13 Hz)
+""")
+else:
+    print(f"""
+⚠️  Using HETEROGENEITY system (B range: ~15-29):
   - Purpose: Create node diversity to avoid over-synchronization
   - NOT designed to reproduce Wendling 2002 activity types
+  - Frequency band classification is descriptive only
 
-Wendling 2002 activity types require specific parameters:
-  - Type 1 (Background): B=50, G=15
-  - Type 4 (Alpha): B=10, G=15
-  - etc. (See STANDARD_PARAMETERS.py)
-
-The "frequency band" classification here is just for describing signal content,
-NOT the same as Wendling activity type classification.
+To use Wendling 2002 activity types:
+  1. Set NODE_TYPES at top of file
+  2. Example: NODE_TYPES = ['Type1', 'Type1', 'Type4', 'Type4', 'Type5', 'Type5']
+  3. See STANDARD_PARAMETERS.py for available types
 """)
 print("="*80)

@@ -1,0 +1,31 @@
+Target parameters:
+  B_vals = [50. 25. 15. 15. 50. 50.]
+  G_vals = [15. 15.  0.  0. 15. 15.]
+
+After assignment:
+  model.params['B'] = [50. 25. 15. 15. 50. 50.]
+  model.params['G'] = [15. 15.  0.  0. 15. 15.]
+
+Running...
+
+After run():
+  model.params['B'] = [50. 25. 15. 15. 50. 50.]
+  model.params['G'] = [15. 15.  0.  0. 15. 15.]
+
+Node 0 (Type1): B=50.0, G=15.0
+  mean=-0.58, std=0.01
+
+Node 1 (Type3): B=25.0, G=15.0
+  mean=2.08, std=5.42
+
+Node 2 (Type6): B=15.0, G=0.0
+  mean=8.22, std=3.70
+
+Node 3 (Type6): B=15.0, G=0.0
+  mean=8.22, std=3.70
+
+Node 4 (Type1): B=50.0, G=15.0
+  mean=-0.58, std=0.01
+
+Node 5 (Type1): B=50.0, G=15.0
+  mean=-0.58, std=0.01

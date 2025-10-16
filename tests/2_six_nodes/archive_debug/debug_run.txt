@@ -1,0 +1,14 @@
+﻿================================================================================
+6-Nodes Complete Network Analysis (FIXED)
+================================================================================
+
+Generating random connectivity matrix...
+  Target density: 60%
+  Connections: 9/15
+  Actual density: 60.00%
+
+Network Configuration:
+  Nodes: 6
+  Connections: 9
+  Density: 60.00%
+  Weight range: [0.5, 1.5]
