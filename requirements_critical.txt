@@ -1,0 +1,30 @@
+# Critical packages for neurolib Evolution optimization (Windows)
+# Tested stable on Windows 10/11, Python 3.11
+
+# Python version
+# python==3.11.14
+
+# Core scientific (CRITICAL: numpy must be < 2.0)
+numpy==1.26.4
+scipy==1.16.3
+numba==0.63.1
+pandas==2.3.3
+
+# Neurolib framework
+neurolib==0.6.1
+pypet==0.6.1
+deap==1.4.3
+
+# Data storage
+h5py==3.15.1
+tables==3.10.2
+
+# Visualization
+matplotlib==3.10.8
+seaborn==0.13.2
+networkx==3.6.1
+
+# Other dependencies
+xarray==2025.12.0
+tqdm==4.67.1
+dill==0.4.0
